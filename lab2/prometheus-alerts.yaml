@@ -1,0 +1,50 @@
+server:
+  global:
+    scrape_interval: 15s      
+    evaluation_interval: 15s  
+
+alertmanager:
+  enabled: true
+  config:
+    route:
+      receiver: 'external-webhook'
+      group_by: ['alertname', 'endpoint']
+      group_wait: 10s       
+      group_interval: 1m    
+      repeat_interval: 1h   
+    receivers:
+      - name: 'external-webhook'
+        webhook_configs:
+          - url: 'https://webhook.site/4c1dc97c-37d2-4a5c-8291-2e9953c70fb8'
+
+serverFiles:
+  alerts:
+    groups:
+      - name: lab2-critical-alerts
+        rules:
+          - alert: HighErrorRate
+            expr: sum(rate(http_errors_total[1m])) by (endpoint) > 0.5
+            for: 1m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Всплеск ошибок 500 на эндпоинте {{ $labels.endpoint }}"
+              description: "Скорость генерации ошибок превышает 0.5 в секунду."
+
+          - alert: HighLatencyP95
+            expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{endpoint!="/metrics"}[1m])) by (le, endpoint)) > 1.0
+            for: 1m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Деградация производительности на {{ $labels.endpoint }}"
+              description: "95% запросов обрабатываются дольше 1 секунды."
+
+          - alert: ServiceDown
+            expr: absent(up{app="lab2-api"}) == 1
+            for: 1m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Сервис полностью недоступен"
+              description: "Prometheus не может получить метрики. Под упал или не отвечает."

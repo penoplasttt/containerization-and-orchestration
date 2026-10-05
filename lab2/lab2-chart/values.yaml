@@ -1,0 +1,9 @@
+replicaCount: 1
+
+image:
+  repository: lab2-api
+  tag: v1
+  pullPolicy: Never
+
+service:
+  type: ClusterIP
