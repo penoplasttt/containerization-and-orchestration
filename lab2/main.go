@@ -15,6 +15,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
@@ -108,15 +109,21 @@ func middleware(next http.Handler) http.Handler {
 
 		httpRequestsTotal.WithLabelValues(r.Method, r.URL.Path, strconv.Itoa(rw.statusCode)).Inc()
 		httpRequestDuration.WithLabelValues(r.Method, r.URL.Path).Observe(duration)
-		if rw.statusCode >= 500 {
-			httpErrorsTotal.WithLabelValues(r.Method, r.URL.Path).Inc()
-		}
 
-		slog.InfoContext(ctx, "request completed",
+		logAttrs := []any{
 			slog.String("trace_id", traceID),
 			slog.Int("status", rw.statusCode),
 			slog.Float64("duration_sec", duration),
-		)
+		}
+
+		if rw.statusCode >= 500 {
+			httpErrorsTotal.WithLabelValues(r.Method, r.URL.Path).Inc()
+			slog.ErrorContext(ctx, "request failed", logAttrs...)
+		} else if rw.statusCode >= 400 {
+			slog.WarnContext(ctx, "request completed with client error", logAttrs...)
+		} else {
+			slog.InfoContext(ctx, "request completed", logAttrs...)
+		}
 	})
 }
 
@@ -136,13 +143,24 @@ func main() {
 	})
 
 	mux.HandleFunc("/fail", func(w http.ResponseWriter, r *http.Request) {
+		span := trace.SpanFromContext(r.Context())
+		span.SetStatus(codes.Error, "manual error")
+
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte("internal server error\n"))
 	})
 
 	mux.HandleFunc("/slow", func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		
+		tracer := otel.Tracer("lab2-server")
+		_, childSpan := tracer.Start(ctx, "slow-op")
+
 		sleepTime := time.Duration(rand.Intn(2000)+1000) * time.Millisecond
 		time.Sleep(sleepTime)
+
+		childSpan.End()
+
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(fmt.Sprintf("slept for %v\n", sleepTime)))
 	})

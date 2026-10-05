@@ -26,4 +26,4 @@ spec:
             - containerPort: 8080
           env:
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              value: "http://jaeger-collector.default.svc.cluster.local:4318"
+              value: "http://jaeger.default.svc.cluster.local:4318"
