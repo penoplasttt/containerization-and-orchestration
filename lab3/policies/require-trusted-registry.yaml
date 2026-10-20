@@ -1,0 +1,19 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-trusted-registry
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: require-trusted-registry
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+      validate:
+        message: "Только доверенный реестр"
+        pattern:
+          spec:
+            containers:
+              - image: "docker.io/library/*"

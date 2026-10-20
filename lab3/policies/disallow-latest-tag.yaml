@@ -1,0 +1,21 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-latest-tag
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: disallow-latest-tag
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+      validate:
+        message: "Образ не должен использовать тег latest"
+        deny:
+          conditions:
+            any:
+              - key: "{{ request.object.spec.containers[?ends_with(image, ':latest')] | length(@) }}"
+                operator: GreaterThan
+                value: 0
