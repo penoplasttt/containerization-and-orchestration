@@ -1,0 +1,27 @@
+groups:
+  - name: shop-api
+    rules:
+      - alert: ShopApiDown
+        expr: up{app="shop-api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "API shop недоступен"
+          description: "Поды shop-api не отвечают на scrape уже более 1 минуты."
+      - alert: ShopApiHighErrorRate
+        expr: rate(shop_api_http_requests_total{code=~"5.."}[5m]) / rate(shop_api_http_requests_total[5m]) > 0.5
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Высокая доля ошибок API"
+          description: "Более 50% запросов к shop-api за последние 5 минут возвращают 5xx."
+      - alert: ShopApiHighLatency
+        expr: histogram_quantile(0.95, rate(shop_api_http_request_duration_seconds_bucket[5m])) > 1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Высокая задержка API"
+          description: "p95 времени ответа shop-api превышает 1 секунду за последние 5 минут."

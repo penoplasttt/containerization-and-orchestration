@@ -1,0 +1,53 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-resources
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: require-resources
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - cnpg-system
+          - resources:
+              names:
+                - shop-postgres-*
+          - resources:
+              selector:
+                matchLabels:
+                  app.kubernetes.io/name: prometheus
+          - resources:
+              selector:
+                matchLabels:
+                  app.kubernetes.io/name: grafana
+          - resources:
+              selector:
+                matchLabels:
+                  app.kubernetes.io/name: loki
+          - resources:
+              selector:
+                matchLabels:
+                  app.kubernetes.io/name: jaeger
+          - resources:
+              selector:
+                matchLabels:
+                  app.kubernetes.io/name: karma
+      validate:
+        message: "Каждый контейнер должен указывать requests и limits по cpu и memory"
+        pattern:              
+          spec:
+            containers:
+              - resources:
+                  requests:
+                    cpu: "?*"
+                    memory: "?*"
+                  limits:
+                    cpu: "?*"
+                    memory: "?*"
