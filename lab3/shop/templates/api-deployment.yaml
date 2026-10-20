@@ -18,6 +18,10 @@ spec:
     metadata:
       labels:
         app: shop-api
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "{{ .Values.api.port }}"
+        prometheus.io/path: "/metrics"
     spec:
       containers:
         - name: api

@@ -8,5 +8,9 @@ spec:
   selector:
     app: shop-api
   ports:
-    - port: 80
+    - name: http
+      port: 80
+      targetPort: {{ .Values.api.port }}
+    - name: metrics
+      port: 9090
       targetPort: {{ .Values.api.port }}

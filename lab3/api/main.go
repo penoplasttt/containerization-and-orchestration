@@ -6,6 +6,11 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
+	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	_ "github.com/lib/pq"
 )
@@ -14,6 +19,50 @@ type Order struct {
 	ID     int64  `json:"id"`
 	Item   string `json:"item"`
 	Status string `json:"status"`
+}
+
+var (
+	httpRequests = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "shop_api_http_requests_total",
+			Help: "Total number of HTTP requests handled by the api, by handler and status code.",
+		},
+		[]string{"handler", "code"},
+	)
+	httpDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "shop_api_http_request_duration_seconds",
+			Help:    "HTTP request duration in seconds, by handler.",
+			Buckets: prometheus.DefBuckets,
+		},
+		[]string{"handler"},
+	)
+)
+
+func init() {
+	prometheus.MustRegister(httpRequests)
+	prometheus.MustRegister(httpDuration)
+}
+
+// instrument wraps a handler and records request count and duration.
+func instrument(handler string, next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+		next(rec, r)
+		httpRequests.WithLabelValues(handler, strconv.Itoa(rec.status)).Inc()
+		httpDuration.WithLabelValues(handler).Observe(time.Since(start).Seconds())
+	}
+}
+
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (r *statusRecorder) WriteHeader(code int) {
+	r.status = code
+	r.ResponseWriter.WriteHeader(code)
 }
 
 func main() {
@@ -34,7 +83,7 @@ func main() {
 
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/health", instrument("health", func(w http.ResponseWriter, r *http.Request) {
 		if os.Getenv("HEALTH_FAIL") == "true" {
 			w.WriteHeader(http.StatusServiceUnavailable)
 			w.Write([]byte("unhealthy\n"))
@@ -42,9 +91,9 @@ func main() {
 		}
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("ok\n"))
-	})
+	}))
 
-	mux.HandleFunc("/order", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/order", instrument("order", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
@@ -65,9 +114,9 @@ func main() {
 		}
 		w.WriteHeader(http.StatusCreated)
 		json.NewEncoder(w).Encode(Order{ID: id, Item: req.Item, Status: "pending"})
-	})
+	}))
 
-	mux.HandleFunc("/orders", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/orders", instrument("orders", func(w http.ResponseWriter, r *http.Request) {
 		rows, err := db.Query(`SELECT id, item, status FROM orders ORDER BY id`)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
@@ -87,7 +136,10 @@ func main() {
 			orders = append(orders, o)
 		}
 		json.NewEncoder(w).Encode(orders)
-	})
+	}))
+
+	// Prometheus metrics endpoint (not instrumented to avoid self-scraping noise).
+	mux.Handle("/metrics", promhttp.Handler())
 
 	addr := ":" + getenv("PORT", "8080")
 	log.Printf("api listening on %s", addr)

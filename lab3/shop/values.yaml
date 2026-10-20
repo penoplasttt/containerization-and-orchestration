@@ -1,13 +1,13 @@
 api:
   image:
     repository: docker.io/library/shop-api
-    tag: v6
+    tag: v3
     pullPolicy: IfNotPresent
   replicas: 5
   port: 8080
   env:
-    DATABASE_URL: "postgres://postgres:postgres@shop-postgres:5432/shop?sslmode=disable"
-    HEALTH_FAIL: "true" 
+    DATABASE_URL: "postgres://app:5HOxHk6vN4wtYhQ36uVuBkgviHkLCV3jxqqQHPsydk1nWghLmzfON7Mkqj56pNUH@shop-postgres-rw:5432/app?sslmode=disable"
+    HEALTH_FAIL: "false" 
 
 worker:
   image:
@@ -16,4 +16,4 @@ worker:
     pullPolicy: IfNotPresent
   replicas: 2
   env:
-    DATABASE_URL: "postgres://postgres:postgres@shop-postgres:5432/shop?sslmode=disable"
+    DATABASE_URL: "postgres://app:5HOxHk6vN4wtYhQ36uVuBkgviHkLCV3jxqqQHPsydk1nWghLmzfON7Mkqj56pNUH@shop-postgres-rw:5432/app?sslmode=disable"
