@@ -3,7 +3,7 @@ api:
     repository: docker.io/library/shop-api
     tag: v3
     pullPolicy: IfNotPresent
-  replicas: 5
+  replicas: 3
   port: 8080
   env:
     DATABASE_URL: "postgres://app:5HOxHk6vN4wtYhQ36uVuBkgviHkLCV3jxqqQHPsydk1nWghLmzfON7Mkqj56pNUH@shop-postgres-rw:5432/app?sslmode=disable"
