@@ -6,6 +6,7 @@ metadata:
     app: shop-worker
 spec:
   replicas: {{ .Values.worker.replicas }}
+  revisionHistoryLimit: 2
   selector:
     matchLabels:
       app: shop-worker

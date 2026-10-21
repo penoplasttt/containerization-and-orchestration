@@ -6,6 +6,7 @@ metadata:
     app: shop-batch
 spec:
   replicas: {{ .Values.batch.replicas }}
+  revisionHistoryLimit: 2
   selector:
     matchLabels:
       app: shop-batch
