@@ -1,0 +1,48 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-trusted-registry
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: require-trusted-registry
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - cnpg-system
+                - argocd
+          - resources:
+              names:
+                - shop-postgres-*
+          - resources:
+              selector:
+                matchLabels:
+                  app.kubernetes.io/name: prometheus
+          - resources:
+              selector:
+                matchLabels:
+                  app.kubernetes.io/name: grafana
+          - resources:
+              selector:
+                matchLabels:
+                  app.kubernetes.io/name: loki
+          - resources:
+              selector:
+                matchLabels:
+                  app.kubernetes.io/name: jaeger
+          - resources:
+              selector:
+                matchLabels:
+                  app.kubernetes.io/name: karma
+      validate:
+        message: "Только доверенный реестр"
+        pattern:
+          spec:
+            containers:
+              - image: "docker.io/library/*"

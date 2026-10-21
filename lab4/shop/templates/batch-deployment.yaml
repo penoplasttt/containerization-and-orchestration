@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: shop-batch
+  labels:
+    app: shop-batch
+spec:
+  replicas: {{ .Values.batch.replicas }}
+  selector:
+    matchLabels:
+      app: shop-batch
+  template:
+    metadata:
+      labels:
+        app: shop-batch
+    spec:
+      containers:
+        - name: batch
+          image: "{{ .Values.batch.image.repository }}:{{ .Values.batch.image.tag }}"
+          imagePullPolicy: {{ .Values.batch.image.pullPolicy }}
+          env:
+            - name: CPU_WORKERS
+              value: {{ .Values.batch.env.CPU_WORKERS | quote }}
+            - name: MEMORY_MB
+              value: {{ .Values.batch.env.MEMORY_MB | quote }}
+            - name: MEMORY_GROWTH_MB
+              value: {{ .Values.batch.env.MEMORY_GROWTH_MB | quote }}
+            - name: MEMORY_MAX_MB
+              value: {{ .Values.batch.env.MEMORY_MAX_MB | quote }}
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false

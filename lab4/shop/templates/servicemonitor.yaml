@@ -1,0 +1,15 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: shop-api
+  labels:
+    app: shop-api
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: shop-api
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 15s
