@@ -8,6 +8,8 @@ api:
   env:
     DATABASE_URL: "postgres://app:5HOxHk6vN4wtYhQ36uVuBkgviHkLCV3jxqqQHPsydk1nWghLmzfON7Mkqj56pNUH@shop-postgres-rw:5432/app?sslmode=disable"
     HEALTH_FAIL: "false" 
+  scheduling:
+    mode: podAntiAffinity 
 
 worker:
   image:
