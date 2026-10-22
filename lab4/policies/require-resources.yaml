@@ -17,6 +17,7 @@ spec:
               namespaces:
                 - cnpg-system
                 - argocd
+                - monitoring
           - resources:
               names:
                 - shop-postgres-*
@@ -41,7 +42,7 @@ spec:
                 matchLabels:
                   app.kubernetes.io/name: karma
       validate:
-        message: "Каждый контейнер должен указывать requests и limits по cpu и memory"
+        message: "Каждый контейнер должен указывать requests по cpu и memory, и limits по memory"
         pattern:              
           spec:
             containers:
@@ -50,5 +51,4 @@ spec:
                     cpu: "?*"
                     memory: "?*"
                   limits:
-                    cpu: "?*"
                     memory: "?*"

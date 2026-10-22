@@ -81,5 +81,77 @@ helm upgrade --install shop ./shop
 
 Проверила критический путь: `api` отвечает `ok` на `/health`, таблица `orders` создана.
 
+## Часть 3 - Реальные числа вместо угадывания
+
+Для начала поставила генератор нагрузки hey. А также анализатор потребления krr. Ставила из исходников, т.к. brew-вариант падал из-за устаревших command line tools
+
+Пробросила порт shop-api и прогнала нагрузку по критическому пути /order:
+
+```bash
+kubectl port-forward -n default svc/shop-api 8081:80
+hey -z 300s -c 20 -m POST -H "Content-Type: application/json" \
+  -d '{"item":"load"}' http://localhost:8081/order
+```
+
+Первый прогон оказался слишком тяжелым (без ограничения QPS):
+
+![](images/image2.png)
+
+api был не хватало цпу: request 100m, а под нагрузкой ему оказалось, что нужно было ~1.6 ядра (это я увидела как раз через krr). Из-за этого вставки в postgres падали (500-е), а в логах postgres видны чекпоинты по 200+ секунд
+
+Проблема была ещё и в том, что krr агрегирует потребление за окно истории (минимум 1 час), и в него попадали данные всех прогонов. Пришлось пересоздать Prometheus, чтобы данные почистились и прогнала нагрузку с ограничением QPS:
+
+```bash
+hey -z 300s -c 10 -q 20 -m POST -H "Content-Type: application/json" \
+  -d '{"item":"load"}' http://localhost:8081/order
+```
+
+![](images/image3.png)
+
+Теперь все получилось без ошибок и krr показал более реалистичные цифры, которые я могу дать
+
+```bash
+cd /tmp/krr && python3 krr.py simple -n default -p http://127.0.0.1:9090 \
+  --history_duration=1 --timeframe_duration=0.5 --points_required=10 \
+  -f json --fileoutput /tmp/krr-report.json
+```
+
+|  | request | limit | krr request | Severity |
+|---|---|---|---|---|
+| shop-api | 100m / 128Mi | 256Mi | 274m / 100Mi | OK |
+| shop-batch | 100m / 128Mi | 512Mi | 1003m / 100Mi | CRITICAL |
+| shop-worker | 100m / 128Mi | 256Mi | 10m / 100Mi | GOOD |
+
+krr не смог проанализировать postgres: CloudNativePG создаёт поды напрямую (не через стандартный Deployment/StatefulSet), а krr сканирует только стандартные workload-типы. Поэтому потребление postgres посчитала напрямую из Prometheus той же методикой (95-й перцентиль CPU, пик памяти):
+
+```bash
+# CPU 95-й перцентиль
+quantile_over_time(0.95, sum(rate(container_cpu_usage_seconds_total{pod=~"shop-postgres.*",container="postgres"}[5m]))[1h:1m])
+# Память пик
+max_over_time(container_memory_working_set_bytes{pod=~"shop-postgres.*",container="postgres"}[1h:1m])
+```
+
+| Метрика | Значение |
+|---|---|
+| CPU (95-й перцентиль) | 522m |
+| CPU (среднее) | 82m |
+| Память (пик) | 170Mi |
+
+**Итоги:**
+- **api** - я недооценила нагрузку на критический путь. Под реальным трафиком api упирается в CPU, а request 100m его душил, krr рекомендует поднять CPU почти в 3 раза
+- **batch** - он специально жжёт CPU (`CPU_WORKERS=1`), поэтому ему нужно ~1 ядро, а не 100m, это было ожидаемо. Ничего менять для него не буду
+- **worker** - простаивает и 100m были с огромным запасом, можно уменьшить в 10 раз
+- **postgres** — потребляет 0.5 ядра и 170Mi под нагрузкой.
+
+Итоговые значения, которые прописала в values.yaml:
+
+| | Request CPU | Request Mem | Limit |
+|---|---|---|---|
+| shop-api | 274m | 100Mi | 256Mi |
+| shop-worker | 10m | 100Mi | 256Mi |
+| postgres | 522m | 170Mi | 512Mi |
+
+
+
 
 

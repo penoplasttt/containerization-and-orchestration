@@ -29,11 +29,6 @@ spec:
             - name: MEMORY_MAX_MB
               value: {{ .Values.batch.env.MEMORY_MAX_MB | quote }}
           resources:
-            requests:
-              cpu: 100m
-              memory: 128Mi
-            limits:
-              cpu: 500m
-              memory: 512Mi
+            {{- toYaml .Values.batch.resources | nindent 12 }}
           securityContext:
             allowPrivilegeEscalation: false

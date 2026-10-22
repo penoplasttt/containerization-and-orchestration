@@ -17,6 +17,7 @@ spec:
               namespaces:
                 - cnpg-system
                 - argocd
+                - monitoring
           - resources:
               names:
                 - shop-postgres-*

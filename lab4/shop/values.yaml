@@ -9,7 +9,13 @@ api:
     DATABASE_URL: "postgres://app:5HOxHk6vN4wtYhQ36uVuBkgviHkLCV3jxqqQHPsydk1nWghLmzfON7Mkqj56pNUH@shop-postgres-rw:5432/app?sslmode=disable"
     HEALTH_FAIL: "false" 
   scheduling:
-    mode: podAntiAffinity 
+    mode: podAntiAffinity
+  resources:
+    requests:
+      cpu: 274m
+      memory: 100Mi
+    limits:
+      memory: 256Mi
 
 worker:
   image:
@@ -19,6 +25,12 @@ worker:
   replicas: 2
   env:
     DATABASE_URL: "postgres://app:5HOxHk6vN4wtYhQ36uVuBkgviHkLCV3jxqqQHPsydk1nWghLmzfON7Mkqj56pNUH@shop-postgres-rw:5432/app?sslmode=disable"
+  resources:
+    requests:
+      cpu: 10m
+      memory: 100Mi
+    limits:
+      memory: 256Mi
 
 batch:
   image:
@@ -31,3 +43,17 @@ batch:
     MEMORY_MB: "256"
     MEMORY_GROWTH_MB: "0"
     MEMORY_MAX_MB: "512"
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      memory: 512Mi
+
+postgres:
+  resources:
+    requests:
+      cpu: 522m
+      memory: 170Mi
+    limits:
+      memory: 512Mi

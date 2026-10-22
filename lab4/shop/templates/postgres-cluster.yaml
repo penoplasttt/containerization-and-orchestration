@@ -12,3 +12,5 @@ spec:
         name: shop-app-secret
   storage:
     size: 1Gi
+  resources:
+    {{- toYaml .Values.postgres.resources | nindent 4 }}
