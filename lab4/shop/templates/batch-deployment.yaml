@@ -15,6 +15,7 @@ spec:
       labels:
         app: shop-batch
     spec:
+      priorityClassName: {{ .Values.batch.priorityClassName }}
       containers:
         - name: batch
           image: "{{ .Values.batch.image.repository }}:{{ .Values.batch.image.tag }}"

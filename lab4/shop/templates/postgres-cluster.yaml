@@ -4,6 +4,7 @@ metadata:
   name: shop-postgres
 spec:
   instances: 1
+  priorityClassName: {{ .Values.postgres.priorityClassName }}
   bootstrap:
     initdb:
       database: app

@@ -24,6 +24,18 @@ spec:
         prometheus.io/port: "{{ .Values.api.port }}"
         prometheus.io/path: "/metrics"
     spec:
+      {{- if eq .Values.api.scheduling.mode "podAntiAffinity" }}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: shop-api
+                topologyKey: kubernetes.io/hostname
+      {{- end }}
+      priorityClassName: {{ .Values.api.priorityClassName }}
       containers:
         - name: api
           image: "{{ .Values.api.image.repository }}:{{ .Values.api.image.tag }}"

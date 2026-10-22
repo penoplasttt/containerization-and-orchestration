@@ -10,12 +10,16 @@ api:
     HEALTH_FAIL: "false" 
   scheduling:
     mode: podAntiAffinity
+  priorityClassName: shop-critical
+  pdb:
+    minAvailable: 2
   resources:
     requests:
       cpu: 274m
       memory: 100Mi
     limits:
-      memory: 256Mi
+      cpu: 274m
+      memory: 100Mi
 
 worker:
   image:
@@ -23,6 +27,7 @@ worker:
     tag: v1
     pullPolicy: IfNotPresent
   replicas: 2
+  priorityClassName: shop-low
   env:
     DATABASE_URL: "postgres://app:5HOxHk6vN4wtYhQ36uVuBkgviHkLCV3jxqqQHPsydk1nWghLmzfON7Mkqj56pNUH@shop-postgres-rw:5432/app?sslmode=disable"
   resources:
@@ -38,6 +43,7 @@ batch:
     tag: v1
     pullPolicy: IfNotPresent
   replicas: 1
+  priorityClassName: shop-low
   env:
     CPU_WORKERS: "1"
     MEMORY_MB: "256"
@@ -51,9 +57,19 @@ batch:
       memory: 512Mi
 
 postgres:
+  priorityClassName: shop-critical
   resources:
     requests:
       cpu: 522m
       memory: 170Mi
     limits:
-      memory: 512Mi
+      cpu: 522m
+      memory: 170Mi
+
+priorityClasses:
+  critical:
+    name: shop-critical
+    value: 1000
+  low:
+    name: shop-low
+    value: 100

@@ -1,0 +1,15 @@
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: {{ .Values.priorityClasses.critical.name }}
+value: {{ .Values.priorityClasses.critical.value }}
+globalDefault: false
+description: "High priority for the critical path (api, postgres)."
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: {{ .Values.priorityClasses.low.name }}
+value: {{ .Values.priorityClasses.low.value }}
+globalDefault: false
+description: "Low priority for background workloads (batch, worker)."

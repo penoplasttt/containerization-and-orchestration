@@ -15,6 +15,7 @@ spec:
       labels:
         app: shop-worker
     spec:
+      priorityClassName: {{ .Values.worker.priorityClassName }}
       containers:
         - name: worker
           image: "{{ .Values.worker.image.repository }}:{{ .Values.worker.image.tag }}"
