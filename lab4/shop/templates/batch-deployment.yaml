@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: shop-batch
+  labels:
+    app: shop-batch
+spec:
+  replicas: {{ .Values.batch.replicas }}
+  revisionHistoryLimit: 2
+  selector:
+    matchLabels:
+      app: shop-batch
+  template:
+    metadata:
+      labels:
+        app: shop-batch
+    spec:
+      priorityClassName: {{ .Values.batch.priorityClassName }}
+      containers:
+        - name: batch
+          image: "{{ .Values.batch.image.repository }}:{{ .Values.batch.image.tag }}"
+          imagePullPolicy: {{ .Values.batch.image.pullPolicy }}
+          env:
+            - name: CPU_WORKERS
+              value: {{ .Values.batch.env.CPU_WORKERS | quote }}
+            - name: MEMORY_MB
+              value: {{ .Values.batch.env.MEMORY_MB | quote }}
+            - name: MEMORY_GROWTH_MB
+              value: {{ .Values.batch.env.MEMORY_GROWTH_MB | quote }}
+            - name: MEMORY_MAX_MB
+              value: {{ .Values.batch.env.MEMORY_MAX_MB | quote }}
+          resources:
+            {{- toYaml .Values.batch.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false

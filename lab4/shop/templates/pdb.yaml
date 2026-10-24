@@ -1,0 +1,11 @@
+{{- if .Values.api.pdb }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: shop-api
+spec:
+  minAvailable: {{ .Values.api.pdb.minAvailable }}
+  selector:
+    matchLabels:
+      app: shop-api
+{{- end }}
