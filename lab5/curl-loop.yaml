@@ -1,0 +1,30 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: curl-loop
+  labels:
+    app: curl-loop
+spec:
+  containers:
+    - name: curl
+      image: docker.io/library/busybox:1.36
+      command: ["/bin/sh", "-c"]
+      args:
+        - |
+          for i in $(seq 1 300); do
+            if ! wget -q -O /dev/null http://shop-api/health; then
+              echo "FAIL at $i"
+            fi
+            sleep 0.2
+          done
+          echo "done"
+      resources:
+        requests:
+          cpu: 50m
+          memory: 64Mi
+        limits:
+          cpu: 100m
+          memory: 128Mi
+      securityContext:
+        allowPrivilegeEscalation: false
+  restartPolicy: Never

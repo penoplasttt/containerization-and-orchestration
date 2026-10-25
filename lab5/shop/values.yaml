@@ -1,0 +1,38 @@
+api:
+  image:
+    repository: docker.io/library/shop-api
+    tag: v3
+    pullPolicy: IfNotPresent
+  replicas: 5
+  port: 8080
+  service:
+    type: NodePort
+    nodePort: 30080
+  env:
+    DATABASE_URL: "postgres://app:WUrrK9l097tniXGxxMTObJiBQd8zR1OkOyXkc8VPOuF9wRaegCNx7CnWH3CBuWaI@shop-postgres-rw:5432/app?sslmode=disable"
+    HEALTH_FAIL: "false"
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      memory: 256Mi
+  securityContext:
+    allowPrivilegeEscalation: false
+
+worker:
+  image:
+    repository: docker.io/library/shop-worker
+    tag: v1
+    pullPolicy: IfNotPresent
+  replicas: 2
+  env:
+    DATABASE_URL: "postgres://app:WUrrK9l097tniXGxxMTObJiBQd8zR1OkOyXkc8VPOuF9wRaegCNx7CnWH3CBuWaI@shop-postgres-rw:5432/app?sslmode=disable"
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      memory: 256Mi
+  securityContext:
+    allowPrivilegeEscalation: false
