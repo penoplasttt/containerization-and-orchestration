@@ -1,12 +1,16 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"strconv"
+	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -37,6 +41,10 @@ var (
 		},
 		[]string{"handler"},
 	)
+	// shuttingDown сигнализирует, что под завершается: readiness-проба
+	// начинает возвращать 503, чтобы Kubernetes убрал под из эндпоинтов
+	// ДО того, как мы закроем listener.
+	shuttingDown atomic.Bool
 )
 
 func init() {
@@ -84,6 +92,11 @@ func main() {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/health", instrument("health", func(w http.ResponseWriter, r *http.Request) {
+		if shuttingDown.Load() {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			w.Write([]byte("shutting down\n"))
+			return
+		}
 		if os.Getenv("HEALTH_FAIL") == "true" {
 			w.WriteHeader(http.StatusServiceUnavailable)
 			w.Write([]byte("unhealthy\n"))
@@ -143,7 +156,39 @@ func main() {
 
 	addr := ":" + getenv("PORT", "8080")
 	log.Printf("api listening on %s", addr)
-	log.Fatal(http.ListenAndServe(addr, mux))
+
+	srv := &http.Server{
+		Addr:    addr,
+		Handler: mux,
+	}
+
+	// Graceful shutdown: ждём SIGTERM/SIGINT.
+	go func() {
+		quit := make(chan os.Signal, 1)
+		signal.Notify(quit, syscall.SIGTERM, syscall.SIGINT)
+		<-quit
+		log.Println("получен сигнал завершения")
+
+		// 1) Помечаем под как завершающийся: readiness-проба начнёт отдавать 503,
+		//    Kubernetes уберёт под из EndpointSlice.
+		shuttingDown.Store(true)
+		log.Println("readiness переведён в 503, жду, пока k8s уберёт под из эндпоинтов...")
+
+		// 2) Даём Kubernetes время обновить EndpointSlice (обычно 1-2 сек).
+		time.Sleep(3 * time.Second)
+
+		// 3) Теперь можно закрывать listener и ждать завершения активных запросов.
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := srv.Shutdown(ctx); err != nil {
+			log.Printf("graceful shutdown: %v", err)
+		}
+		log.Println("сервер остановлен")
+	}()
+
+	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		log.Fatalf("server error: %v", err)
+	}
 }
 
 func getenv(key, def string) string {
