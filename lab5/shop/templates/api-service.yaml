@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: shop-api
+  labels:
+    app: shop-api
+spec:
+  type: {{ .Values.api.service.type }}
+  selector:
+    app: shop-api
+  ports:
+    - name: http
+      port: 80
+      targetPort: {{ .Values.api.port }}
+      {{- if .Values.api.service.nodePort }}
+      nodePort: {{ .Values.api.service.nodePort }}
+      {{- end }}
+    - name: metrics
+      port: 9090
+      targetPort: {{ .Values.api.port }}

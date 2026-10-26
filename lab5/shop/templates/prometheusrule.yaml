@@ -1,0 +1,37 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: shop-api-alerts
+  labels:
+    app: shop-api
+    release: prometheus
+spec:
+  groups:
+    - name: shop-network
+      rules:
+        - alert: ShopApiNoConnections
+          expr: sum(rate(shop_api_http_requests_total[5m])) == 0
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Нет соединений с shop-api"
+            description: "За последние 5 минут к shop-api не поступило ни одного HTTP-запроса. Либо клиент (load-gen) остановлен, либо api недоступен по сети."
+
+        - alert: ShopEgressDeniedByPolicy
+          expr: sum(rate(hubble_drop_total{reason="POLICY_DENIED"}[5m])) > 0
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Трафик отклонён политикой"
+            description: "Cilium отклоняет исходящие пакеты по политике (POLICY_DENIED). Либо сломана allow-политика (под хочет туда, куда ему надо, а его не пускают), либо под делает то, чего делать не должен."
+
+        - alert: CoreDNSDown
+          expr: up{job=~".*coredns.*"} == 0
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: "CoreDNS недоступен"
+            description: "CoreDNS не отвечает на scrape более 1 минуты. Без DNS сервисы не найдут друг друга по имени — вся сеть кластера ломается."
