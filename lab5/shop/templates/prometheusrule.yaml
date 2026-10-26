@@ -7,33 +7,31 @@ metadata:
     release: prometheus
 spec:
   groups:
-    - name: shop-api
+    - name: shop-network
       rules:
-        - alert: ShopApiDown
-          expr: up{app="shop-api"} == 0
+        - alert: ShopApiNoConnections
+          expr: sum(rate(shop_api_http_requests_total[5m])) == 0
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Нет соединений с shop-api"
+            description: "За последние 5 минут к shop-api не поступило ни одного HTTP-запроса. Либо клиент (load-gen) остановлен, либо api недоступен по сети."
+
+        - alert: ShopEgressDeniedByPolicy
+          expr: sum(rate(hubble_drop_total{reason="POLICY_DENIED"}[5m])) > 0
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Трафик отклонён политикой"
+            description: "Cilium отклоняет исходящие пакеты по политике (POLICY_DENIED). Либо сломана allow-политика (под хочет туда, куда ему надо, а его не пускают), либо под делает то, чего делать не должен."
+
+        - alert: CoreDNSDown
+          expr: up{job=~".*coredns.*"} == 0
           for: 1m
           labels:
             severity: critical
           annotations:
-            summary: "API shop недоступен"
-            description: "Поды shop-api не отвечают на scrape уже более 1 минуты."
-        - alert: ShopApiHighErrorRate
-          expr: |
-            rate(shop_api_http_requests_total{code=~"5.."}[5m])
-              / rate(shop_api_http_requests_total[5m]) > 0.5
-          for: 2m
-          labels:
-            severity: warning
-          annotations:
-            summary: "Высокая доля ошибок API"
-            description: "Более 50% запросов к shop-api за последние 5 минут возвращают 5xx."
-        - alert: ShopApiHighLatency
-          expr: |
-            histogram_quantile(0.95,
-              rate(shop_api_http_request_duration_seconds_bucket[5m])) > 1
-          for: 2m
-          labels:
-            severity: warning
-          annotations:
-            summary: "Высокая задержка API"
-            description: "p95 времени ответа shop-api превышает 1 секунду за последние 5 минут."
+            summary: "CoreDNS недоступен"
+            description: "CoreDNS не отвечает на scrape более 1 минуты. Без DNS сервисы не найдут друг друга по имени — вся сеть кластера ломается."

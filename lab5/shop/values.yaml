@@ -65,6 +65,19 @@ networkPolicy:
               app: shop-worker
       ports:
         - port: 5432
+    - name: ing-allow-cnpg-operator-to-postgres
+      podSelector:
+        matchLabels:
+          cnpg.io/cluster: shop-postgres
+      from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: cnpg-system
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: cloudnative-pg
+      ports:
+        - port: 8000
   egress:
     - name: eg-allow-client-to-api
       podSelector:

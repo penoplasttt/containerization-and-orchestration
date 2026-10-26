@@ -226,6 +226,8 @@ ping -c 3 10.0.1.151
 
 ![](images/image9.png)
 
+(kube-dns изначальноо прятался, пришлось поковыряться чтобы его отображать)
+
 Дальше стала проверять, что api и worker могут достучаться до postgres. И тут выяснилось, что postgres сам в беде.... после включения default-deny он потерял доступ к apiserver, а CNPG-оператору это нужно для readiness-проб и reconciliation. В логах postgres было:
 
 ```
@@ -317,6 +319,86 @@ shop-api-* → shop-postgres-1:5432 | DROPPED POLICY_DENIED
 вместо app: shop-api. Из-за этого api не попадал под правила и api → postgres блокировался
 
 Вернула лейбл app shop-api в podSelector, переприменила чарт. Матрица снова зелёная:)
+
+## Часть 7 — Мониторинг
+
+По заданию нужны три метрики
+
+| Метрика | Источник | Как включила |
+|---|---|---|
+| Соединения | `shop_api_http_requests_total` | уже была в api |
+| Отклонённый политиками трафик | `hubble_drop_total{reason="POLICY_DENIED"}` | включила метрики Hubble в Cilium |
+| Работа DNS | `coredns_dns_requests_total` / `up{job="coredns"}` | уже скрейпится стеком |
+
+Метрик Hubble в Prometheus не было, поэтому:
+
+1. Включила метрики Hubble в Cilium:
+   ```
+   helm upgrade cilium cilium/cilium --version 1.20.4 -n kube-system \
+     --reuse-values --set hubble.metrics.enabled="{drop,flow,dns,tcp}"
+   ```
+2. Добавила Service cilium-hubble-metrics (kube-system, порт 9965) и ServiceMonitor cilium-hubble, Prometheus стал скрейпить обе ноды
+
+Для начала собрала дашборду
+
+| Панель | Запрос | Что показывает |
+|---|---|---|
+| Соединения с shop-api | `sum(rate(shop_api_http_requests_total[5m]))` | общий поток запросов к api |
+| Новые TCP-соединения | `sum(rate(hubble_tcp_flags_total{flag="SYN"}[5m]))` | новые TCP-соединения через Cilium |
+| Отклонённый политиками трафик | `sum(rate(hubble_drop_total{reason="POLICY_DENIED"}[5m]))` | пакеты, срезанные политикой |
+| Работа DNS | `sum(rate(coredns_dns_requests_total[5m]))` | общий поток DNS-запросов |
+
+![](images/image12.png)
+
+Здесь я немного не поняла, откуда у меня идет трафик, который отклоняют... но пока пошла дальше
+
+В prometheusrule.yaml заложила 3 алерта
+
+| Алерт | Выражение | Severity | Обоснование |
+|---|---|---|---|
+| `ShopApiNoConnections` | `sum(rate(shop_api_http_requests_total[5m])) == 0` | warning | Нет ни одного соединения с api за 5 минут - либо клиент (load-gen) остановлен, либо api недоступен по сети. |
+| `ShopEgressDeniedByPolicy` | `sum(rate(hubble_drop_total{reason="POLICY_DENIED"}[5m])) > 0` | critical | Cilium режет исходящие пакеты по политике. Значит либо сломана allow-политика (под хочет туда, куда ему надо, а его не пускают), либо под делает то, чего делать не должен |
+| `CoreDNSDown` | `up{job=~".*coredns.*"} == 0` | critical | CoreDNS не отвечает на scrape. Без DNS сервисы не найдут друг друга по имени — ломается вся сеть кластера |
+
+На этом моменте мне нужно было спровоцировать алерт. Но я заметила, что `ShopEgressDeniedByPolicy` уже горит....
+
+![](images/image13.png)
+
+Пошла расследовать... Заглянула в Hubble и вот что увидела
+
+![](images/image14.png)
+
+CNPG-оператор → shop-postgres-1:8000 (status-порт). Оператор опрашивает статус инстанса postgres, а политика не разрешает. Не поняла, в какой момент я это проморгала
+
+Добавила в values.yaml ingress-правило `ing-allow-cnpg-operator-to-postgres`
+
+```yaml
+- name: ing-allow-cnpg-operator-to-postgres
+  podSelector:
+    matchLabels:
+      cnpg.io/cluster: shop-postgres
+  from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: cnpg-system
+      podSelector:
+        matchLabels:
+          app.kubernetes.io/name: cloudnative-pg
+  ports:
+    - port: 8000
+```
+
+и все пофиксилось:) Так что полезность алертов увидела сразу же на практике
+
+Алерты больше не горят
+
+![](images/image15.png)
+
+И отклоненного трафика больше нет
+
+![](images/image16.png)
+
+
 
 
 
