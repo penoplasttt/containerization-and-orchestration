@@ -20,6 +20,94 @@ api:
   securityContext:
     allowPrivilegeEscalation: false
 
+networkPolicy:
+  enabled: true
+  defaultDeny: true
+  apiServerPort: 6443
+  ingress:
+    - name: ing-allow-client-to-api
+      podSelector:
+        matchLabels:
+          app: shop-api
+      from:
+        - podSelector:
+            matchLabels:
+              app: load-gen
+      ports:
+        - port: 8080
+    - name: ing-allow-prometheus-to-api
+      podSelector:
+        matchLabels:
+          app: shop-api
+      from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - port: 8080
+    - name: ing-allow-api-to-postgres
+      podSelector:
+        matchLabels:
+          cnpg.io/cluster: shop-postgres
+      from:
+        - podSelector:
+            matchLabels:
+              app: shop-api
+      ports:
+        - port: 5432
+    - name: ing-allow-worker-to-postgres
+      podSelector:
+        matchLabels:
+          cnpg.io/cluster: shop-postgres
+      from:
+        - podSelector:
+            matchLabels:
+              app: shop-worker
+      ports:
+        - port: 5432
+  egress:
+    - name: eg-allow-client-to-api
+      podSelector:
+        matchLabels:
+          app: load-gen
+      to:
+        - podSelector:
+            matchLabels:
+              app: shop-api
+      ports:
+        - port: 8080
+    - name: eg-allow-api-to-postgres
+      podSelector:
+        matchLabels:
+          app: shop-api
+      to:
+        - podSelector:
+            matchLabels:
+              cnpg.io/cluster: shop-postgres
+      ports:
+        - port: 5432
+    - name: eg-allow-worker-to-postgres
+      podSelector:
+        matchLabels:
+          app: shop-worker
+      to:
+        - podSelector:
+            matchLabels:
+              cnpg.io/cluster: shop-postgres
+      ports:
+        - port: 5432
+    - name: eg-allow-dns
+      podSelector:
+        matchLabels:
+          net.allow-dns: "true"
+      to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - port: 53
+          protocol: UDP
+
 worker:
   image:
     repository: docker.io/library/shop-worker

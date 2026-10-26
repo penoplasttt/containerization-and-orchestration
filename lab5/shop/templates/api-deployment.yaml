@@ -18,6 +18,7 @@ spec:
     metadata:
       labels:
         app: shop-api
+        net.allow-dns: "true"
       annotations:
         prometheus.io/scrape: "true"
         prometheus.io/port: "{{ .Values.api.port }}"

@@ -13,6 +13,7 @@ spec:
     metadata:
       labels:
         app: shop-worker
+        net.allow-dns: "true"
     spec:
       containers:
         - name: worker

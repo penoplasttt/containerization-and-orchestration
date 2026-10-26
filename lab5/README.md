@@ -176,3 +176,92 @@ ping -c 3 10.0.1.151
 - посторонний под → postgres - нельзя, это главная цель zero-trust: никто, кроме api/worker, не должен достучаться до БД.
 - Всё остальное (api↔worker, api→api и т.д.) - нельзя, по умолчанию всё запрещено.
 
+## Часть 4 - Включи zero-trust
+
+Реализовала матрицу как шаблоны NetworkPolicy в чарте shop. Значения вынесла в values.yaml
+
+Структура шаблонов в чарте:
+
+- **networkpolicy-default-deny.yaml** - запрещает весь трафик по умолчанию
+- **networkpolicy-ingress.yaml** - рендерит входящие правила из values.networkPolicy.ingress
+- **networkpolicy-egress.yaml** - рендерит исходящие правила из values.networkPolicy.egress
+
+В values.yaml описала правила по матрице:
+
+- ingress: клиент → api (8080), Prometheus → api (8080), api → postgres (5432), worker → postgres (5432).
+- egress: клиент → api (8080), api → postgres (5432), worker → postgres (5432), DNS → kube-system (53).
+
+С чем немного пришлось повозиться:
+
+- default-deny - пустой podSelector: {} и пустые правила = запретить всё. Без него политики только добавляли бы разрешения, а не закрывали лишнее
+- DNS обязателен - без egress-правила на kube-dns (порт 53) api/worker не смогут резолвить имена и всё ломается
+- Prometheus из другого namespace - для него использовала namespaceSelector, т.к он живёт не в shop.
+- podSelecto требует matchLabels - сокращённая форма podSelector: {app: shop-api} не работает, Kubernetes ругается(( Нужно podSelector: {matchLabels: {app: shop-api}}
+
+проверю, что все политики применились:
+
+![](images/image8.png)
+
+## Часть 5 - Докажи матрицу на практике
+
+Теперь буду вручную проверять матрицу... из каждого пода попробовала достучаться до каждого адресата и свела результат в таблицу
+
+Для проверки создала посторонний под **stranger** - у него по матрице нет доступа ни к кому
+
+Проверяла соединения так:
+- **api** - wget http://shop-api/orders (HTTP) или nc -z <адрес> <порт> (TCP).
+- **postgres** - nc -z shop-postgres-rw 5432
+- **worker** - nc -z <ip-worker-пода> 8080
+- **DNS** - nslookup <имя>
+
+и тут были проблемы...
+
+Сначала я проверила, что stranger не может достучаться до postgres. И тут меня ждал сюрприз: **stranger спокойно резолвил DNS-имена**
+
+моё egress-правило на DNS имело podSelector: {}, то есть разрешало DNS всем подам в namespace, включая stranger. В моменте я думала ну DNS же всем нужен, а по матрице stranger не должен иметь доступа ни к чему, даже к DNS
+
+В итоге добавила подам api/worker/load-gen общий лейбл net.allow-dns: "true" и ограничила DNS-политику только ими
+
+После этого stranger → DNS стал недоступен, проверила это еще и в Hubble
+
+![](images/image9.png)
+
+Дальше стала проверять, что api и worker могут достучаться до postgres. И тут выяснилось, что postgres сам в беде.... после включения default-deny он потерял доступ к apiserver, а CNPG-оператору это нужно для readiness-проб и reconciliation. В логах postgres было:
+
+```
+readiness probe using cached cluster definition due to API server connectivity issue
+apiServerReachable: false
+apiServerErr: Get "https://10.43.0.1:443/...": context deadline exceeded
+```
+
+Здесь я ооочень долго намучилась, но в итоге нужна была CiliumNetworkPolicy с toEntities: kube-apiserver. Создала шаблон ciliumnetworkpolicy-postgres-apiserver.yaml
+
+После этого все заработало как ожидалось
+
+Еще была проблема, что когда я проверяла DNS, я использовала nslookup shop-api. И оно возвращало ошибку:
+
+```
+** server can't find shop-api.cluster.local: NXDOMAIN
+** server can't find shop-api.svc.cluster.local: NXDOMAIN
+Name: shop-api.shop.svc.cluster.local
+Address: 10.43.190.163
+```
+
+Я уже думала, что DNS сломан. Но там на самом деле nslookup просто сначала пробует короткое имя, а потом резолвит полное имя shop-api.shop.svc.cluster.local в 10.43.190.163. Из-за NXDOMAIN exit code = 1, хотя резолв прошёл
+
+тогда стала проверять реальным запросом wget http://shop-api/orders. Если имя резолвится и соединение проходит, то DNS работает
+
+**Итоговая матрица**
+
+После всех фиксов прогоняю матрицу заново, все как и хотелось
+
+| Источник \ Назначение | api | worker | postgres | DNS |
+|---|---|---|---|---|
+| **клиент** (load-gen) | ✅ работает | ❌ | ❌ | ✅ работает |
+| **api** | ❌ | ❌ | ✅ работает | ✅ работает |
+| **worker** | ❌ | ❌ | ✅ работает | ✅ работает |
+| **посторонний под** (stranger) | ❌ | ❌ | ❌ | ❌ |
+
+
+
+

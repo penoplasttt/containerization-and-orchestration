@@ -5,6 +5,7 @@ metadata:
   namespace: shop
   labels:
     app: load-gen
+    net.allow-dns: "true"
 spec:
   containers:
     - name: load
@@ -28,7 +29,6 @@ spec:
           cpu: 50m
           memory: 64Mi
         limits:
-          cpu: 100m
           memory: 128Mi
       securityContext:
         allowPrivilegeEscalation: false

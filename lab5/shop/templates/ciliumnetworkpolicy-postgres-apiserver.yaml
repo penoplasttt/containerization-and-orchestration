@@ -1,0 +1,17 @@
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: postgres-to-apiserver
+spec:
+  endpointSelector:
+    matchLabels:
+      cnpg.io/cluster: shop-postgres
+  egress:
+    - toEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - port: {{ .Values.networkPolicy.apiServerPort | quote }}
+              protocol: TCP
+{{- end }}
