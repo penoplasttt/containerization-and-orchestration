@@ -1,0 +1,439 @@
+{
+  "name": "Incident Diagnostician (multi-agent)",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -368,
+        -144
+      ],
+      "id": "66c4b51f-b1c1-4c33-9fde-1d1248772701",
+      "name": "Manual Trigger"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "incident",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.2,
+      "position": [
+        -368,
+        64
+      ],
+      "id": "984ba9a7-7059-4315-a602-d397de848951",
+      "name": "Webhook (Alert)",
+      "webhookId": "incident-webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Нормализуем входящее событие из любого триггера\nconst input = $input.first().json;\n\nconst alert = input.alert || input.body?.alerts?.[0] || {};\n\nconst service = alert.labels?.service\n  || input.service\n  || 'catalog';\n\nconst symptom = alert.annotations?.summary\n  || input.symptom\n  || 'Рост памяти сервиса';\n\nreturn {\n  json: {\n    service: service,\n    symptom: symptom,\n    severity: alert.labels?.severity || input.severity || 'warning',\n    source: input.source || 'manual',\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -144,
+        -48
+      ],
+      "id": "c4350e4a-1fcb-4161-8870-0d1ebf15a4fb",
+      "name": "Normalize Event"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "Ты — ассистент. Вызови инструмент read_file с path=\"/data/incidents/2026-09-14-catalog-memory-leak.md\" и верни его содержимое.",
+        "options": {
+          "forceToolCallOnFirstIteration": true
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        96,
+        -224
+      ],
+      "id": "bb973305-e55d-41d1-8011-4b1d0277761a",
+      "name": "Agent 1 Read KB"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "Ты — ассистент. Вызови инструмент prom_query с query=\"up\" и верни результат.",
+        "options": {
+          "forceToolCallOnFirstIteration": true
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        96,
+        -48
+      ],
+      "id": "fc11f1a6-5bda-41bf-bd8b-70f8fa34b93e",
+      "name": "Agent 2 Get Metrics"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "Ты — ассистент. Вызови инструмент list_commits с project_id=\"penoplasttt/catalog\" и верни результат.",
+        "options": {
+          "forceToolCallOnFirstIteration": true
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        96,
+        144
+      ],
+      "id": "1fb7a88d-d831-4e20-b1ff-98800a56079f",
+      "name": "Agent 3 Get Commits"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Собираем результаты трёх агентов (по индексам входов) + данные инцидента\nconst items = $input.all();\nconst kb = items[0]?.json?.output || '';\nconst metrics = items[1]?.json?.output || '';\nconst commits = items[2]?.json?.output || '';\nconst incident = $('Normalize Event').first().json;\n\nreturn [{ json: { ...incident, kb, metrics, commits } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        384,
+        -48
+      ],
+      "id": "eb3420c0-59af-46b4-8b6a-0cacdd213545",
+      "name": "Combine"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "Ты — ИИ-ассистент диагностики инцидентов. На основе данных ниже сформулируй диагноз инцидента.\n\nВходные данные инцидента:\n- service: {{ $json.service }}\n- symptom: {{ $json.symptom }}\n- severity: {{ $json.severity }}\n\nСобранные данные:\n- База знаний: {{ $json.kb }}\n- Метрики: {{ $json.metrics }}\n- Коммиты: {{ $json.commits }}\n\nВерни диагноз: что сломалось, вероятная причина, что проверить/сделать.",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        624,
+        -48
+      ],
+      "id": "7f2ab14e-b84e-425f-80da-af6115758807",
+      "name": "Agent 4 Diagnose"
+    },
+    {
+      "parameters": {
+        "model": "qwen2.5:7b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        -96,
+        -304
+      ],
+      "id": "cb9f235c-b81f-41df-8c45-4adb8f63a612",
+      "name": "Ollama Chat Model",
+      "credentials": {
+        "ollamaApi": {
+          "id": "152oAKhfZqbngv7a",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "endpointUrl": "http://mcp-fs:8000/mcp",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.mcpClientTool",
+      "typeVersion": 1.4,
+      "position": [
+        400,
+        -256
+      ],
+      "id": "41079544-a866-4795-89eb-46aebe419a3b",
+      "name": "mcp-fs"
+    },
+    {
+      "parameters": {
+        "endpointUrl": "http://mcp-prometheus:8000/mcp",
+        "authentication": "bearerAuth",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.mcpClientTool",
+      "typeVersion": 1.4,
+      "position": [
+        480,
+        192
+      ],
+      "id": "ee5e3637-f8ef-4d76-94d2-6eecc0646f2c",
+      "name": "mcp-prometheus",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "yLHFZV9MSlmdkKOv",
+          "name": "Bearer Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "endpointUrl": "http://mcp-gitlab:3002/mcp",
+        "authentication": "bearerAuth",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.mcpClientTool",
+      "typeVersion": 1.4,
+      "position": [
+        240,
+        336
+      ],
+      "id": "cb50e952-f00b-4c6c-99b7-af67291c3213",
+      "name": "mcp-gitlab",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "yLHFZV9MSlmdkKOv",
+          "name": "Bearer Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "qwen2.5:7b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        -64,
+        144
+      ],
+      "id": "0185c1a8-6178-40ab-aefd-9b93c737cd76",
+      "name": "Ollama Chat Model1",
+      "credentials": {
+        "ollamaApi": {
+          "id": "152oAKhfZqbngv7a",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "qwen2.5:7b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        -64,
+        352
+      ],
+      "id": "707aa6e5-af64-4123-bd30-6701a0d7063c",
+      "name": "Ollama Chat Model2",
+      "credentials": {
+        "ollamaApi": {
+          "id": "152oAKhfZqbngv7a",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "qwen2.5:7b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        624,
+        192
+      ],
+      "id": "e7e3f475-0e7c-44db-83b7-a10052811860",
+      "name": "Ollama Chat Model3",
+      "credentials": {
+        "ollamaApi": {
+          "id": "152oAKhfZqbngv7a",
+          "name": "Ollama account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Normalize Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook (Alert)": {
+      "main": [
+        [
+          {
+            "node": "Normalize Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Event": {
+      "main": [
+        [
+          {
+            "node": "Agent 1 Read KB",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Agent 2 Get Metrics",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Agent 3 Get Commits",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agent 1 Read KB": {
+      "main": [
+        [
+          {
+            "node": "Combine",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Combine": {
+      "main": [
+        [
+          {
+            "node": "Agent 4 Diagnose",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Agent 1 Read KB",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "mcp-fs": {
+      "ai_tool": [
+        [
+          {
+            "node": "Agent 1 Read KB",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "mcp-prometheus": {
+      "ai_tool": [
+        [
+          {
+            "node": "Agent 2 Get Metrics",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "mcp-gitlab": {
+      "ai_tool": [
+        [
+          {
+            "node": "Agent 3 Get Commits",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Agent 2 Get Metrics",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Chat Model2": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Agent 3 Get Commits",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Chat Model3": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Agent 4 Diagnose",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agent 2 Get Metrics": {
+      "main": [
+        [
+          {
+            "node": "Combine",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agent 3 Get Commits": {
+      "main": [
+        [
+          {
+            "node": "Combine",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "809b53f5-aa9f-45c3-8fbd-293885146512",
+  "meta": {
+    "instanceId": "dba2280abaadf2e22eca7df65153ff8be76a5e7a085ea0ccdf224663e0ff6eb3"
+  },
+  "nodeGroups": [],
+  "id": "uAudfI01CYxOQKNy",
+  "tags": []
+}

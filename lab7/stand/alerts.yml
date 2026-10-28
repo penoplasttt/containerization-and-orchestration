@@ -1,0 +1,29 @@
+groups:
+  - name: n8n-alerts
+    rules:
+      - alert: N8nDown
+        expr: up{job="n8n"} == 0
+        for: 15s
+        labels:
+          severity: critical
+        annotations:
+          summary: "n8n недоступен"
+          description: "Prometheus не может доскрейпить n8n в течение 1 минуты. Сервис лежит."
+
+      - alert: N8nEventLoopLagHigh
+        expr: n8n_nodejs_eventloop_lag_seconds > 1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Высокая задержка event loop в n8n"
+          description: "Event loop заблокирован более 1 секунды. n8n деградирует."
+
+      - alert: N8nMemoryHigh
+        expr: n8n_process_resident_memory_bytes > 1e9
+        for: 15s
+        labels:
+          severity: warning
+        annotations:
+          summary: "Высокое потребление памяти n8n"
+          description: "RSS-память процесса n8n превысила 1 ГБ. Возможна утечка."
