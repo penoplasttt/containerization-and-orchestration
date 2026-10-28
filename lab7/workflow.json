@@ -1,0 +1,296 @@
+{
+  "name": "Incident Diagnostician",
+  "nodes": [
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "Ты — ИИ-ассистент диагностики инцидентов. Входные данные:\n- service: {{ $json.service }}\n- symptom: {{ $json.symptom }}\n- severity: {{ $json.severity }}\n\nВызови инструменты по порядку:\n1. read_file с path=\"/data/incidents/2026-09-14-catalog-memory-leak.md\"\n2. Сформулируй диагноз и верни его текстом.",
+        "options": {
+          "maxIterations": 20,
+          "forceToolCallOnFirstIteration": true
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        160,
+        -48
+      ],
+      "id": "d72cc52b-2d4d-4d1b-aedf-851cc468f17b",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "model": "qwen2.5:7b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        32,
+        176
+      ],
+      "id": "a549a3c3-0365-437e-a0ff-75cc4ec37d7e",
+      "name": "Ollama Chat Model",
+      "credentials": {
+        "ollamaApi": {
+          "id": "152oAKhfZqbngv7a",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "endpointUrl": "http://mcp-fs:8000/mcp",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.mcpClientTool",
+      "typeVersion": 1.4,
+      "position": [
+        384,
+        176
+      ],
+      "id": "4bacda0c-a8a1-4c9f-98ae-dac36e5252ea",
+      "name": "mcp-fs"
+    },
+    {
+      "parameters": {
+        "endpointUrl": "http://mcp-gitlab:3002/mcp",
+        "authentication": "bearerAuth",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.mcpClientTool",
+      "typeVersion": 1.4,
+      "position": [
+        272,
+        176
+      ],
+      "id": "4df5aec3-8a79-4152-ba51-5accf44c0ad7",
+      "name": "mcp-gitlab",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "yLHFZV9MSlmdkKOv",
+          "name": "Bearer Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "endpointUrl": "http://mcp-prometheus:8000/mcp",
+        "authentication": "bearerAuth",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.mcpClientTool",
+      "typeVersion": 1.4,
+      "position": [
+        496,
+        176
+      ],
+      "id": "0b1a2e7f-ce35-4ffe-a7f1-f7efafc1cfeb",
+      "name": "mcp-prometheus",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "yLHFZV9MSlmdkKOv",
+          "name": "Bearer Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -320,
+        -144
+      ],
+      "id": "6ebbc90a-a8e7-4653-a551-4fca900e7e2c",
+      "name": "Manual Trigger"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "f1caf92d-1087-4953-8438-3715ad3b1af2",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.2,
+      "position": [
+        -320,
+        48
+      ],
+      "id": "b2bdbc02-f079-41ba-930b-3a2a4408d037",
+      "name": "Webhook (Alert)",
+      "webhookId": "f1caf92d-1087-4953-8438-3715ad3b1af2"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Нормализуем входящее событие из любого триггера\nconst input = $input.first().json;\n\n// Если пришёл webhook от Alertmanager — берём данные алерта\n// Если ручной запуск — берём то, что передали вручную\nconst alert = input.alert || input.body?.alerts?.[0] || {};\n\nconst service = alert.labels?.service\n  || input.service\n  || 'catalog';\n\nconst symptom = alert.annotations?.summary\n  || input.symptom\n  || 'Рост памяти сервиса';\n\nreturn {\n  json: {\n    service: service,\n    symptom: symptom,\n    severity: alert.labels?.severity || input.severity || 'warning',\n    source: input.source || 'manual',\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -64,
+        -48
+      ],
+      "id": "80e766dc-ab83-4569-9b2a-3623301b288f",
+      "name": "Normalize Event"
+    },
+    {
+      "parameters": {
+        "operation": "write",
+        "fileName": "/output/report.md",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1.1,
+      "position": [
+        672,
+        -48
+      ],
+      "id": "801f4848-be67-4d20-ad87-2339077fea48",
+      "name": "Read/Write Files from Disk"
+    },
+    {
+      "parameters": {
+        "jsCode": "const text = $json.output;\nconst binary = await this.helpers.prepareBinaryData(\n  Buffer.from(text, 'utf8'),\n  'report.md',\n  'text/markdown'\n);\nreturn [{ json: $json, binary: { data: binary } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        512,
+        -48
+      ],
+      "id": "09e03d4b-2106-4c7d-9af9-4da1a9b00681",
+      "name": "Code in JavaScript"
+    }
+  ],
+  "pinData": {
+    "Manual Trigger": [
+      {
+        "json": {
+          "service": "catalog",
+          "symptom": "рост памяти"
+        }
+      }
+    ]
+  },
+  "connections": {
+    "Ollama Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "mcp-fs": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "mcp-gitlab": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "mcp-prometheus": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Normalize Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook (Alert)": {
+      "main": [
+        [
+          {
+            "node": "Normalize Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Event": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read/Write Files from Disk": {
+      "main": [
+        []
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Read/Write Files from Disk",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "243ac591-85bc-4c6e-91e7-39954474e8ae",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "dba2280abaadf2e22eca7df65153ff8be76a5e7a085ea0ccdf224663e0ff6eb3"
+  },
+  "nodeGroups": [],
+  "id": "GvaYa5HgoB9qEa1L",
+  "tags": []
+}
